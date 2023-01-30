@@ -249,7 +249,7 @@ def song_phone_home(project,rdpc_url,state):
     response=requests.get(combined_url)
 
     if response.status_code!=200:
-        sys.exit("Query response failed, return status_code :%s" % response.status_code!=200)
+        sys.exit("Query response failed, return status_code :%s" % response.status_code)
 
     print("Calling Song API...Complete")  
     return(response)
