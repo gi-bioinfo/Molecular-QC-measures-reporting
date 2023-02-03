@@ -131,7 +131,7 @@ def main():
 
                     save_pkl_plots(write_dir,plots,cli_input.plot)
 
-def save_pkl_plots(out_dir,plots,plot):
+def save_pkl_plots(out_dir,gen_plots,plot):
     print("Saving plots...")
     svg_dir="%s/%s" % (out_dir,"svg")
     pkl_dir="%s/%s" % (out_dir,"pkl")
@@ -140,16 +140,16 @@ def save_pkl_plots(out_dir,plots,plot):
         os.mkdir(svg_dir)
     if not os.path.exists(pkl_dir):
         os.mkdir(pkl_dir)
-    for plot in plots.keys():
-        file = open("%s/%s.pkl" % (pkl_dir,plot),"wb")
-        pickle.dump(plots[plot],file)
+    for gen_plot in gen_plots.keys():
+        file = open("%s/%s.pkl" % (pkl_dir,gen_plot),"wb")
+        pickle.dump(gen_plots[gen_plot],file)
         file.close()
     print("Saving plots...Complete")
 
-    if plots:
+    if plot:
         print("Saving plots SVGs...")
-        for plot in plots.keys():
-            plots[plot].write_image("%s/%s.svg" % (svg_dir,plot))
+        for gen_plot in gen_plots.keys():
+            gen_plots[gen_plot].write_image("%s/%s.svg" % (svg_dir,gen_plot))
         print("Saving plots SVGs...Complete")
 
 def generate_plot(metrics,x_dim,y_dim,cols,rows,title):
