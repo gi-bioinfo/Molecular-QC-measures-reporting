@@ -45,16 +45,18 @@ def main():
     parser.add_argument('-r', '--repo', dest="repo", help="Workflow Github Repo", required=True,type=str,nargs="+")
     parser.add_argument('-x', '--exclude_runs', dest="excluded_runs", help="Runs to exclude",nargs="+",type=str)
     parser.add_argument('-z', '--plot', dest="plot", help="make pretty plots", default=True,type=bool)
+    parser.add_argument('-d', '--debug', dest="debug", help="debug", default=False,type=bool)
     parser.add_argument('-s', '--state', dest="state", help="analysis state to query : True False",default=["COMPLETE"],choices=["EXECUTOR_ERROR","SYSTEM_ERROR","COMPLETE"],nargs="+")
 
     cli_input= parser.parse_args()
     excluded_runs=cli_input.excluded_runs
+    debug=cli_input.debug
     rdpc_stats={}
     for repo in cli_input.repo:
         rdpc_stats[repo]={}
         for state in cli_input.state:
             response=rdpc_phone_home(cli_input.rdpc_url,cli_input.token,state,repo)
-            run_aggregate_df,task_aggregate_df=generate_rdpc_aggregates(response)
+            run_aggregate_df,task_aggregate_df=generate_rdpc_aggregates(response,debug)
 
             for project in cli_input.project:
                 write_dir="%s/%s_%s_%s" % (cli_input.out_dir,repo.replace(".git","").split("/")[-1],state,project)
@@ -67,8 +69,15 @@ def main():
 
                 rdpc_stats[repo][project]={}
                 rdpc_stats[repo][project][state]={}
+                if debug:
+                    print(len(run_aggregate_df))
+                    print(len(task_aggregate_df))
+                
                 rdpc_stats[repo][project][state]['runs']=run_aggregate_df.query("study_id==@project and runId!=@excluded_runs")
                 rdpc_stats[repo][project][state]['tasks']=task_aggregate_df.query("study_id==@project and runId!=@excluded_runs")
+                if debug:
+                    print(len(rdpc_stats[repo][project][state]['runs']))
+                    print(len(rdpc_stats[repo][project][state]['tasks']))
 
 
                 rdpc_stats[repo][project][state]['runs'].to_csv("%s/%s_%s_%s_%s.tsv" % (tsv_dir,repo.replace(".git","").split("/")[-1],project,str(state),"runs"),sep="\t")
@@ -175,7 +184,7 @@ def rdpc_phone_home(rdpc_url,token,state,repo):
     }
 
     variables={
-        "RunsFilter":{"repository":repo,"state":state},
+        "RunsFilter":{"repository":repo,"state":state},"analysisPage":{"from":0,"size":10000}
     }
 
     query=\
@@ -240,7 +249,7 @@ def rdpc_phone_home(rdpc_url,token,state,repo):
 
     return(response.json()['data']['runs']['content'])
 
-def generate_rdpc_aggregates(response):
+def generate_rdpc_aggregates(response,debug):
     print("Aggregating Files and IDs...")  
     run_aggregate_df=pd.DataFrame()
     task_aggregate_df=pd.DataFrame()
@@ -248,6 +257,12 @@ def generate_rdpc_aggregates(response):
     task_count=0
 
     for run in response:
+        #print(run['runId'])
+
+        if len(run['inputAnalyses'])==0:
+          if debug:
+            print("Skipping %s" % (run['runId']))
+          continue
         run_aggregate_df.loc[agg_count,"runId"]=run['runId']
         run_aggregate_df.loc[agg_count,"repository"]=run['repository']
         run_aggregate_df.loc[agg_count,"study_id"]=run['inputAnalyses'][0]['studyId']

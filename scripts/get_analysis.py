@@ -43,6 +43,7 @@ def main():
     parser.add_argument('-x', '--exclude_analyses', dest="excluded_analyses", help="analyses to exclude",nargs="+",type=str)
     parser.add_argument('-e', '--experiment', dest="experiment", help="experiment type", required=True,nargs="+",type=str,choices=['RNA-Seq', 'WGS', 'WXS'])
     parser.add_argument('-z', '--plot', dest="plot", help="make pretty plots", default=True,type=bool)
+    parser.add_argument('-d', '--debug', dest="debug", help="debug", default=False,type=bool)
     parser.add_argument('-s', '--state', dest="state", help="analysis state to query : PUBLISHED,SUPPRESSED,UNPUBLISHED",
                         nargs="+",
                         default=['PUBLISHED'],
@@ -74,22 +75,23 @@ def main():
                     "%s/%s_%s_%s_fileIDs.tsv" % (tsv_dir,state,project,experiment),
                     sep="\t"
                 )
-                
+                plots={}
+                metrics={}
                 ###RNA-Seq
                 if experiment=='RNA-Seq':
-                    metrics={}
                     metrics['Picard:CollectRnaSeqMetrics']=aggreate_picard_collect_rnaseq_metrics(
                         response,
                         metadata[project][experiment][state],
-                        cli_input.excluded_analyses
+                        cli_input.excluded_analyses,
+                        cli_input.debug
                     )
                     metrics['biobambam2:bammarkduplicates2']=aggregate_picard_mark_duplicates_metrics(
                         response,
                         metadata[project][experiment][state],
-                        cli_input.excluded_analyses
+                        cli_input.excluded_analyses,
+                        cli_input.debug
                     )                    
-                    
-                    plots={}
+                
                     
                     for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
                         title="%s %s %s" % (project,experiment,item)
@@ -130,6 +132,71 @@ def main():
                     metrics['biobambam2:bammarkduplicates2'].to_csv("%s/%s_%s_%s_libraryMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
 
                     save_pkl_plots(write_dir,plots,cli_input.plot)
+                if experiment=='WGS' or experiment=='WXS':
+                    metrics['biobambam2:bammarkduplicates2']=aggregate_picard_mark_duplicates_metrics(
+                        response,
+                        metadata[project][experiment][state],
+                        cli_input.excluded_analyses,
+                        cli_input.debug
+                    )
+                    metrics['GATK:CollectOxoGMetrics']=aggregate_gatk_oxo_metrics(
+                        response,
+                        metadata[project][experiment][state],
+                        cli_input.excluded_analyses,
+                        cli_input.debug
+                    )
+                    metrics['Samtools:stats']=aggregate_samtools_stats_metrics(
+                        response,
+                        metadata[project][experiment][state],
+                        cli_input.excluded_analyses,
+                        cli_input.debug
+                    )
+
+                    for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
+                        title="%s %s %s" % (project,experiment,item)
+                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                            metrics['biobambam2:bammarkduplicates2'],
+                            1000,
+                            600,
+                            ["BWA-MEM"],
+                            [item],
+                            title
+                        )
+                    for ind,item in enumerate(['oxoQ_score']):
+                        title="%s %s %s" % (project,experiment,item)
+                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                            metrics['GATK:CollectOxoGMetrics'],
+                            1000,
+                            600,
+                            ["BWA-MEM"],
+                            [item],
+                            title
+                        )
+                    for ind,item in enumerate(["average_insert_size",
+                        "average_length",
+                        "duplicated_bases",
+                        "error_rate",
+                        "mapped_bases_cigar",
+                        "mapped_reads",
+                        "mismatch_bases",
+                        "paired_reads",
+                        "pairs_on_different_chromosomes",
+                        "properly_paired_reads",
+                        "total_bases",
+                        "total_reads"]):
+                        title="%s %s %s" % (project,experiment,item)
+                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                            metrics['Samtools:stats'],
+                            1000,
+                            600,
+                            ["BWA-MEM"],
+                            [item],
+                            title
+                        )
+                    metrics['biobambam2:bammarkduplicates2'].to_csv("%s/%s_%s_%s_markDupMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
+                    metrics['GATK:CollectOxoGMetrics'].to_csv("%s/%s_%s_%s_oxoMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
+                    metrics['Samtools:stats'].to_csv("%s/%s_%s_%s_samtoolsMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
+                    save_pkl_plots(write_dir,plots,cli_input.plot)   
 
 def save_pkl_plots(out_dir,gen_plots,plot):
     print("Saving plots...")
@@ -199,46 +266,132 @@ def generate_plot(metrics,x_dim,y_dim,cols,rows,title):
     )
     return(fig)
 
-def aggregate_picard_mark_duplicates_metrics(response,metadata_df,analysis_exclude_list):
+def aggregate_samtools_stats_metrics(response,metadata_df,analysis_exclude_list,debug):
+    print("Aggregating metrics from : %s" % ('Samtools:stats'))
+    metrics=pd.DataFrame()
+    #total=len([response.json()[int(ind)] for ind in metadata_df.query("analysisId!=@analysis_exclude_list")["ind"].values.tolist()])
+    for count,analysis in enumerate(response.json()):
+        if analysis_exclude_list!=None:
+            if analysis['analysisId'] in analysis_exclude_list:
+                continue
+        if count%50==0 and debug:
+            print(count)
+        for file in analysis['files']:
+            if file['info'].get('analysis_tools'):
+                if file['info']['analysis_tools'][0]=='Samtools:stats':
+                    metrics.loc[analysis['analysisId'],'sampleId']=analysis['samples'][0]['sampleId']
+                    if "star" in file['fileName']:
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="STAR"
+                    elif "hisat2" in file['fileName']:
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="HISAT2"
+                    else :
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="BWA-MEM"
+                    for query in [
+                        "average_insert_size",
+                        "average_length",
+                        "duplicated_bases",
+                        "error_rate",
+                        "mapped_bases_cigar",
+                        "mapped_reads",
+                        "mismatch_bases",
+                        "paired_reads",
+                        "pairs_on_different_chromosomes",
+                        "properly_paired_reads",
+                        "total_bases",
+                        "total_reads",
+                    ]:
+                        metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
+            else:
+                continue
+
+    return(metrics)
+def aggregate_gatk_oxo_metrics(response,metadata_df,analysis_exclude_list,debug):
+    print("Aggregating metrics from : %s" % ('GATK:CollectOxoGMetrics'))
+    metrics=pd.DataFrame()
+    #total=len([response.json()[int(ind)] for ind in metadata_df.query("analysisId!=@analysis_exclude_list")["ind"].values.tolist()])
+    for count,analysis in enumerate(response.json()):
+        if analysis_exclude_list!=None:
+            if analysis['analysisId'] in analysis_exclude_list:
+                continue
+        if count%50==0 and debug:
+            print(count)
+        for file in analysis['files']:
+            if file['info'].get('analysis_tools'):
+                if file['info']['analysis_tools'][0]=='GATK:CollectOxoGMetrics':
+                    metrics.loc[analysis['analysisId'],'sampleId']=analysis['samples'][0]['sampleId']
+                    if "star" in file['fileName']:
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="STAR"
+                    elif "hisat2" in file['fileName']:
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="HISAT2"
+                    else :
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="BWA-MEM"
+                    for query in [
+                                'oxoQ_score'
+                    ]:
+                        metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
+            else:
+                continue
+
+    return(metrics)
+
+def aggregate_picard_mark_duplicates_metrics(response,metadata_df,analysis_exclude_list,debug):
     print("Aggregating metrics from : %s" % ('biobambam2:bammarkduplicates2'))
     metrics=pd.DataFrame()
-    for analysis in [response.json()[int(ind)] for ind in metadata_df.query("analysisId!=@analysis_exclude_list")["ind"].values.tolist()]:
+    #total=len([response.json()[int(ind)] for ind in metadata_df.query("analysisId!=@analysis_exclude_list")["ind"].values.tolist()])
+    for count,analysis in enumerate(response.json()):
+        if analysis_exclude_list!=None:
+            if analysis['analysisId'] in analysis_exclude_list:
+                continue
+        if count%50==0 and debug:
+            print(count)
         for file in analysis['files']:
-            if file['info']['analysis_tools'][0]=='biobambam2:bammarkduplicates2':
-                metrics.loc[analysis['analysisId'],'sampleId']=analysis['samples'][0]['sampleId']
-                if "star" in file['fileName']:
-                    metrics.loc[analysis['analysisId'],"PIPELINE"]="STAR"
-                else:
-                    metrics.loc[analysis['analysisId'],"PIPELINE"]="HISAT2"
-                for query in [
-                             'READ_PAIRS_EXAMINED',
-                             'READ_PAIR_DUPLICATES',
-                             'READ_PAIR_OPTICAL_DUPLICATES',
-                             'UNMAPPED_READS',
-                             'UNPAIRED_READS_EXAMINED',
-                             'UNPAIRED_READ_DUPLICATES'
-                ]:
-                    metrics.loc[analysis['analysisId'],query]=sum(z[query] for z in file['info']['metrics']['libraries'])
+            if file['info'].get('analysis_tools'):
+                if file['info']['analysis_tools'][0]=='biobambam2:bammarkduplicates2':
+                    metrics.loc[analysis['analysisId'],'sampleId']=analysis['samples'][0]['sampleId']
+                    if "star" in file['fileName']:
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="STAR"
+                    elif "hisat2" in file['fileName']:
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="HISAT2"
+                    else :
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="BWA-MEM"
+                    for query in [
+                                'READ_PAIRS_EXAMINED',
+                                'READ_PAIR_DUPLICATES',
+                                'READ_PAIR_OPTICAL_DUPLICATES',
+                                'UNMAPPED_READS',
+                                'UNPAIRED_READS_EXAMINED',
+                                'UNPAIRED_READ_DUPLICATES'
+                    ]:
+                        metrics.loc[analysis['analysisId'],query]=sum(z[query] for z in file['info']['metrics']['libraries'])
+            else:
+                continue
 
     metrics['TOTAL_READS']=(metrics['READ_PAIRS_EXAMINED']*2)+metrics['UNPAIRED_READS_EXAMINED']
     metrics['DUPLICATION_PCT']=((metrics['READ_PAIR_DUPLICATES']*2)+metrics['UNPAIRED_READ_DUPLICATES'])/metrics['TOTAL_READS']*100
     metrics['MAPPING_PCT']=(metrics['TOTAL_READS']-metrics['UNMAPPED_READS'])/metrics['TOTAL_READS']*100
     return(metrics)
     
-def aggreate_picard_collect_rnaseq_metrics(response,metadata_df,analysis_exclude_list):
+def aggreate_picard_collect_rnaseq_metrics(response,metadata_df,analysis_exclude_list,debug):
     print("Aggregating metrics from : %s " % ('Picard:CollectRnaSeqMetrics'))
     metrics=pd.DataFrame()
-    for analysis in [response.json()[int(ind)] for ind in metadata_df.query("analysisId!=@analysis_exclude_list")["ind"].values.tolist()]:
+    for count,analysis in enumerate(response.json()):
+        if analysis_exclude_list!=None:
+            if analysis['analysisId'] in analysis_exclude_list:
+                continue
+        if count%50==0 and debug:
+            print(count)
         for file in analysis['files']:
-            if file['info']['analysis_tools'][0]=='Picard:CollectRnaSeqMetrics':
-                if "star" in file['fileName']:
-                    metrics.loc[analysis['analysisId'],"PIPELINE"]="STAR"
-                else:
-                    metrics.loc[analysis['analysisId'],"PIPELINE"]="HISAT2"
-                for query in [key for key in file['info']['metrics'].keys() if "pct" in key or "median" in key]:
-                    metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
-
-                metrics.loc[analysis['analysisId'],"sampleId"]=analysis['samples'][0]['sampleId']
+            if file['info'].get('analysis_tools'):
+                if file['info']['analysis_tools'][0]=='Picard:CollectRnaSeqMetrics':
+                    if "star" in file['fileName']:
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="STAR"
+                    else:
+                        metrics.loc[analysis['analysisId'],"PIPELINE"]="HISAT2"
+                    for query in [key for key in file['info']['metrics'].keys() if "pct" in key or "median" in key]:
+                        metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
+                    metrics.loc[analysis['analysisId'],"sampleId"]=analysis['samples'][0]['sampleId']
+            else:
+                continue
     return(metrics)
             
             
