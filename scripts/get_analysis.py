@@ -135,19 +135,31 @@ def main():
                 if experiment=='WGS' or experiment=='WXS':
                     metrics['biobambam2:bammarkduplicates2']=aggregate_picard_mark_duplicates_metrics(
                         response,
-                        metadata[project][experiment][state],
                         cli_input.excluded_analyses,
                         cli_input.debug
                     )
                     metrics['GATK:CollectOxoGMetrics']=aggregate_gatk_oxo_metrics(
                         response,
-                        metadata[project][experiment][state],
                         cli_input.excluded_analyses,
                         cli_input.debug
                     )
                     metrics['Samtools:stats']=aggregate_samtools_stats_metrics(
                         response,
-                        metadata[project][experiment][state],
+                        cli_input.excluded_analyses,
+                        cli_input.debug
+                    )
+                    metrics['Picard:CollectQualityYieldMetrics']=aggregate_gatk_quality_yield_metrics(
+                        response,
+                        cli_input.excluded_analyses,
+                        cli_input.debug
+                    )
+                    metrics['Sanger:verifyBamHomChk']=aggregate_sanger_verifyBamHomChk_metrics(
+                        response,
+                        cli_input.excluded_analyses,
+                        cli_input.debug
+                    )
+                    metrics['Sanger:compareBamGenotypes']=aggregate_sanger_compareBamGenotypes_metrics(
+                        response,
                         cli_input.excluded_analyses,
                         cli_input.debug
                     )
@@ -193,9 +205,44 @@ def main():
                             [item],
                             title
                         )
+                    for ind,item in enumerate(['total_reads','read_length','pf_reads']):
+                        title="%s %s %s" % (project,experiment,item)
+                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                            metrics['Picard:CollectQualityYieldMetrics'],
+                            1000,
+                            600,
+                            ["BWA-MEM"],
+                            [item],
+                            title
+                        )
+
+                    for ind,item in enumerate(['avg_depth','contamination','reads_used','snps_used']):
+                        title="%s %s %s" % (project,experiment,item)
+                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                            metrics['Sanger:verifyBamHomChk'],
+                            1000,
+                            600,
+                            ["BWA-MEM"],
+                            [item],
+                            title
+                        )
+
+                    for ind,item in enumerate(['total_loci_genotype','frac_match_gender','frac_informative_genotype','frac_matched_genotype']):
+                        title="%s %s %s" % (project,experiment,item)
+                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                            metrics['Sanger:compareBamGenotypes'],
+                            1000,
+                            600,
+                            ["BWA-MEM"],
+                            [item],
+                            title
+                        )
                     metrics['biobambam2:bammarkduplicates2'].to_csv("%s/%s_%s_%s_markDupMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
                     metrics['GATK:CollectOxoGMetrics'].to_csv("%s/%s_%s_%s_oxoMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
                     metrics['Samtools:stats'].to_csv("%s/%s_%s_%s_samtoolsMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
+                    metrics['Picard:CollectQualityYieldMetrics'].to_csv("%s/%s_%s_%s_readGroupMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
+                    metrics['Sanger:verifyBamHomChk'].to_csv("%s/%s_%s_%s_verifyBamMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
+                    metrics['Sanger:compareBamGenotypes'].to_csv("%s/%s_%s_%s_bamGenotypesMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
                     save_pkl_plots(write_dir,plots,cli_input.plot)   
 
 def save_pkl_plots(out_dir,gen_plots,plot):
@@ -265,8 +312,46 @@ def generate_plot(metrics,x_dim,y_dim,cols,rows,title):
         titlefont=dict(size=20)
     )
     return(fig)
+def aggregate_gatk_quality_yield_metrics(response,analysis_exclude_list,debug):
+    print("Aggregating metrics from : %s" % ('Picard:CollectQualityYieldMetrics'))
+    metrics=pd.DataFrame()
+    debug=False
+    analysis_exclude_list=None
+    for count,analysis in enumerate(response.json()):
+        if analysis_exclude_list!=None:
+            if analysis['analysisId'] in analysis_exclude_list:
+                continue
+        if count%50==0 and debug:
+            print(count)
+        for file in analysis['files']:
+            if file['info'].get('analysis_tools'):
+                if file['info']['analysis_tools'][0]=='Picard:CollectQualityYieldMetrics':
+                    
+                    sampleId=analysis['samples'][0]['sampleId']
+                    readGroupId=file['info']['metrics']['read_group_id']
+                    uniqueId=sampleId+"."+readGroupId
+                    
+                    if "star" in file['fileName']:
+                        metrics.loc[uniqueId,"PIPELINE"]="STAR"
+                    elif "hisat2" in file['fileName']:
+                        metrics.loc[uniqueId,"PIPELINE"]="HISAT2"
+                    else :
+                        metrics.loc[uniqueId,"PIPELINE"]="BWA-MEM"
+                        
 
-def aggregate_samtools_stats_metrics(response,metadata_df,analysis_exclude_list,debug):
+                    metrics.loc[uniqueId,"sampleId"]=analysis['samples'][0]['sampleId']
+                    metrics.loc[uniqueId,"readGroupId"]=file['info']['metrics']['read_group_id']
+                    metrics.loc[uniqueId,"analysisId"]=analysis['analysisId']
+                    metrics.loc[uniqueId,"objectId"]=file['objectId']
+                    metrics.loc[uniqueId,'total_reads']=file['info']['metrics']['total_reads']
+                    metrics.loc[uniqueId,'read_length']=file['info']['metrics']['read_length']
+                    metrics.loc[uniqueId,'pf_reads']=file['info']['metrics']['pf_reads']
+            else:
+                continue
+
+    return(metrics)
+
+def aggregate_samtools_stats_metrics(response,analysis_exclude_list,debug):
     print("Aggregating metrics from : %s" % ('Samtools:stats'))
     metrics=pd.DataFrame()
     #total=len([response.json()[int(ind)] for ind in metadata_df.query("analysisId!=@analysis_exclude_list")["ind"].values.tolist()])
@@ -305,7 +390,75 @@ def aggregate_samtools_stats_metrics(response,metadata_df,analysis_exclude_list,
                 continue
 
     return(metrics)
-def aggregate_gatk_oxo_metrics(response,metadata_df,analysis_exclude_list,debug):
+
+def aggregate_sanger_compareBamGenotypes_metrics(response,analysis_exclude_list,debug):
+    metrics=pd.DataFrame()
+    debug=False
+    analysis_exclude_list=None
+    for count,analysis in enumerate(response.json()):
+            if analysis_exclude_list!=None:
+                if analysis['analysisId'] in analysis_exclude_list:
+                    continue
+            if count%50==0 and debug:
+                print(count)
+            for file in analysis['files']:
+                if file['info'].get('analysis_tools'):
+                    if file['info']['analysis_tools'][0]=='Sanger:compareBamGenotypes':
+                        if file['info'].get('metrics'):
+
+                            if "star" in file['fileName']:
+                                metrics.loc[analysis['analysisId'],"PIPELINE"]="STAR"
+                            elif "hisat2" in file['fileName']:
+                                metrics.loc[analysis['analysisId'],"PIPELINE"]="HISAT2"
+                            else :
+                                metrics.loc[analysis['analysisId'],"PIPELINE"]="BWA-MEM"
+
+                            metrics.loc[analysis['analysisId'],"sampleId"]=analysis['samples'][0]['sampleId']
+                            metrics.loc[analysis['analysisId'],"compared_against"]=file['info']['metrics']['compared_against']
+                            metrics.loc[analysis['analysisId'],"compared_against"]=file['info']['metrics']['total_loci_gender']
+                            metrics.loc[analysis['analysisId'],"total_loci_genotype"]=file['info']['metrics']['total_loci_genotype']
+                            metrics.loc[analysis['analysisId'],'frac_match_gender']=file['info']['metrics']['tumours'][0]['gender']['frac_match_gender']
+                            metrics.loc[analysis['analysisId'],'gender']=file['info']['metrics']['tumours'][0]['gender']['gender']
+                            metrics.loc[analysis['analysisId'],'frac_informative_genotype']=file['info']['metrics']['tumours'][0]['genotype']['frac_informative_genotype']
+                            metrics.loc[analysis['analysisId'],'frac_matched_genotype']=file['info']['metrics']['tumours'][0]['genotype']['frac_matched_genotype']
+            else:
+                continue
+
+    return(metrics)
+
+def aggregate_sanger_verifyBamHomChk_metrics(response,analysis_exclude_list,debug):
+    metrics=pd.DataFrame()
+    debug=False
+    analysis_exclude_list=None
+    for count,analysis in enumerate(response.json()):
+            if analysis_exclude_list!=None:
+                if analysis['analysisId'] in analysis_exclude_list:
+                    continue
+            if count%50==0 and debug:
+                print(count)
+            for file in analysis['files']:
+                if file['info'].get('analysis_tools'):
+                    if file['info']['analysis_tools'][0]=='Sanger:verifyBamHomChk':
+                        if file['info'].get('metrics'):
+                            metrics.loc[analysis['analysisId'],"sampleId"]=analysis['samples'][0]['sampleId']
+                            if "star" in file['fileName']:
+                                metrics.loc[analysis['analysisId'],"PIPELINE"]="STAR"
+                            elif "hisat2" in file['fileName']:
+                                metrics.loc[analysis['analysisId'],"PIPELINE"]="HISAT2"
+                            else :
+                                metrics.loc[analysis['analysisId'],"PIPELINE"]="BWA-MEM"
+                                
+                            for key in file['info']['metrics'].keys():
+                                if key=='sample_id':
+                                    continue
+                                else:
+                                    metrics.loc[analysis['analysisId'],key]=file['info']['metrics'][key]
+            else:
+                continue
+
+    return(metrics)
+
+def aggregate_gatk_oxo_metrics(response,analysis_exclude_list,debug):
     print("Aggregating metrics from : %s" % ('GATK:CollectOxoGMetrics'))
     metrics=pd.DataFrame()
     #total=len([response.json()[int(ind)] for ind in metadata_df.query("analysisId!=@analysis_exclude_list")["ind"].values.tolist()])
@@ -334,7 +487,7 @@ def aggregate_gatk_oxo_metrics(response,metadata_df,analysis_exclude_list,debug)
 
     return(metrics)
 
-def aggregate_picard_mark_duplicates_metrics(response,metadata_df,analysis_exclude_list,debug):
+def aggregate_picard_mark_duplicates_metrics(response,analysis_exclude_list,debug):
     print("Aggregating metrics from : %s" % ('biobambam2:bammarkduplicates2'))
     metrics=pd.DataFrame()
     #total=len([response.json()[int(ind)] for ind in metadata_df.query("analysisId!=@analysis_exclude_list")["ind"].values.tolist()])
