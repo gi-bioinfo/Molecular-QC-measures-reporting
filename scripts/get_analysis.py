@@ -81,55 +81,57 @@ def main():
                 if experiment=='RNA-Seq':
                     metrics['Picard:CollectRnaSeqMetrics']=aggreate_picard_collect_rnaseq_metrics(
                         response,
-                        metadata[project][experiment][state],
                         cli_input.excluded_analyses,
                         cli_input.debug
                     )
                     metrics['biobambam2:bammarkduplicates2']=aggregate_picard_mark_duplicates_metrics(
                         response,
-                        metadata[project][experiment][state],
                         cli_input.excluded_analyses,
                         cli_input.debug
                     )                    
                 
-                    
-                    for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
-                        title="%s %s %s" % (project,experiment,item)
-                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                            metrics['biobambam2:bammarkduplicates2'],
-                            1000,
-                            600,
-                            ["STAR","HISAT2"],
-                            [item],
-                            title
-                        )
-                    for ind,item in enumerate([
-                        "median_3prime_bias",
-                        "median_5prime_bias",
-                        "median_5prime_to_3prime_bias",
-                        "median_cv_coverage",
-                        "pct_coding_bases",
-                        "pct_correct_strand_reads",
-                        "pct_intergenic_bases",
-                        "pct_intronic_bases",
-                        "pct_mrna_bases",
-                        "pct_r1_transcript_strand_reads",
-                        "pct_r2_transcript_strand_reads",
-                        "pct_ribosomal_bases",
-                        "pct_usable_bases",
-                        "pct_utr_bases"]):
-                        title="%s %s %s" % (project,experiment,item)
-                        plots["fig.%s.%s.%s" % (2,ind+1,title.replace(" ","_"))]=generate_plot(
-                            metrics['Picard:CollectRnaSeqMetrics'],
-                            1000,
-                            600,
-                            ["STAR","HISAT2"],
-                            [item],
-                            title
-                        )
-
-                    metrics['Picard:CollectRnaSeqMetrics'].to_csv("%s/%s_%s_%s_rnaMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
-                    metrics['biobambam2:bammarkduplicates2'].to_csv("%s/%s_%s_%s_libraryMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
+                    if len(metrics['biobambam2:bammarkduplicates2'])>0:
+                        for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
+                            title="%s %s %s" % (project,experiment,item)
+                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                metrics['biobambam2:bammarkduplicates2'],
+                                1000,
+                                600,
+                                ["STAR","HISAT2"],
+                                [item],
+                                title
+                            )
+                    if len(metrics['Picard:CollectRnaSeqMetrics'])>0:
+                        for ind,item in enumerate([
+                            "median_3prime_bias",
+                            "median_5prime_bias",
+                            "median_5prime_to_3prime_bias",
+                            "median_cv_coverage",
+                            "pct_coding_bases",
+                            "pct_correct_strand_reads",
+                            "pct_intergenic_bases",
+                            "pct_intronic_bases",
+                            "pct_mrna_bases",
+                            "pct_r1_transcript_strand_reads",
+                            "pct_r2_transcript_strand_reads",
+                            "pct_ribosomal_bases",
+                            "pct_usable_bases",
+                            "pct_utr_bases"]):
+                            title="%s %s %s" % (project,experiment,item)
+                            plots["fig.%s.%s.%s" % (2,ind+1,title.replace(" ","_"))]=generate_plot(
+                                metrics['Picard:CollectRnaSeqMetrics'],
+                                1000,
+                                600,
+                                ["STAR","HISAT2"],
+                                [item],
+                                title
+                            )
+                    for key,name in zip(
+                        ['Picard:CollectRnaSeqMetrics','biobambam2:bammarkduplicates2'],
+                        ["rnaMetrics","libraryMetrics"]
+                    ):
+                        if len(metrics[key])>0:
+                            metrics[key].to_csv("%s/%s_%s_%s_%s.tsv" % (tsv_dir,state,project,experiment,name),sep="\t")
 
                     save_pkl_plots(write_dir,plots,cli_input.plot)
                 if experiment=='WGS' or experiment=='WXS':
@@ -164,85 +166,101 @@ def main():
                         cli_input.debug
                     )
 
-                    for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
-                        title="%s %s %s" % (project,experiment,item)
-                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                            metrics['biobambam2:bammarkduplicates2'],
-                            1000,
-                            600,
-                            ["BWA-MEM"],
-                            [item],
-                            title
-                        )
-                    for ind,item in enumerate(['oxoQ_score']):
-                        title="%s %s %s" % (project,experiment,item)
-                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                            metrics['GATK:CollectOxoGMetrics'],
-                            1000,
-                            600,
-                            ["BWA-MEM"],
-                            [item],
-                            title
-                        )
-                    for ind,item in enumerate(["average_insert_size",
-                        "average_length",
-                        "duplicated_bases",
-                        "error_rate",
-                        "mapped_bases_cigar",
-                        "mapped_reads",
-                        "mismatch_bases",
-                        "paired_reads",
-                        "pairs_on_different_chromosomes",
-                        "properly_paired_reads",
-                        "total_bases",
-                        "total_reads"]):
-                        title="%s %s %s" % (project,experiment,item)
-                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                            metrics['Samtools:stats'],
-                            1000,
-                            600,
-                            ["BWA-MEM"],
-                            [item],
-                            title
-                        )
-                    for ind,item in enumerate(['total_reads','read_length','pf_reads']):
-                        title="%s %s %s" % (project,experiment,item)
-                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                            metrics['Picard:CollectQualityYieldMetrics'],
-                            1000,
-                            600,
-                            ["BWA-MEM"],
-                            [item],
-                            title
-                        )
+                    if len(metrics['biobambam2:bammarkduplicates2'])>0:
+                        for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
+                            title="%s %s %s" % (project,experiment,item)
+                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                metrics['biobambam2:bammarkduplicates2'],
+                                1000,
+                                600,
+                                ["BWA-MEM"],
+                                [item],
+                                title
+                            )
+                    if len(metrics['GATK:CollectOxoGMetrics'])>0:
+                        for ind,item in enumerate(['oxoQ_score']):
+                            title="%s %s %s" % (project,experiment,item)
+                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                metrics['GATK:CollectOxoGMetrics'],
+                                1000,
+                                600,
+                                ["BWA-MEM"],
+                                [item],
+                                title
+                            )
 
-                    for ind,item in enumerate(['avg_depth','contamination','reads_used','snps_used']):
-                        title="%s %s %s" % (project,experiment,item)
-                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                            metrics['Sanger:verifyBamHomChk'],
-                            1000,
-                            600,
-                            ["BWA-MEM"],
-                            [item],
-                            title
-                        )
+                    if len(metrics['Samtools:stats'])>0:
+                        for ind,item in enumerate(["average_insert_size",
+                            "average_length",
+                            "duplicated_bases",
+                            "error_rate",
+                            "mapped_bases_cigar",
+                            "mapped_reads",
+                            "mismatch_bases",
+                            "paired_reads",
+                            "pairs_on_different_chromosomes",
+                            "properly_paired_reads",
+                            "total_bases",
+                            "total_reads"]):
+                            title="%s %s %s" % (project,experiment,item)
+                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                metrics['Samtools:stats'],
+                                1000,
+                                600,
+                                ["BWA-MEM"],
+                                [item],
+                                title
+                            )
 
-                    for ind,item in enumerate(['total_loci_genotype','frac_match_gender','frac_informative_genotype','frac_matched_genotype']):
-                        title="%s %s %s" % (project,experiment,item)
-                        plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                            metrics['Sanger:compareBamGenotypes'],
-                            1000,
-                            600,
-                            ["BWA-MEM"],
-                            [item],
-                            title
-                        )
-                    metrics['biobambam2:bammarkduplicates2'].to_csv("%s/%s_%s_%s_markDupMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
-                    metrics['GATK:CollectOxoGMetrics'].to_csv("%s/%s_%s_%s_oxoMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
-                    metrics['Samtools:stats'].to_csv("%s/%s_%s_%s_samtoolsMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
-                    metrics['Picard:CollectQualityYieldMetrics'].to_csv("%s/%s_%s_%s_readGroupMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
-                    metrics['Sanger:verifyBamHomChk'].to_csv("%s/%s_%s_%s_verifyBamMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
-                    metrics['Sanger:compareBamGenotypes'].to_csv("%s/%s_%s_%s_bamGenotypesMetrics.tsv" % (tsv_dir,state,project,experiment),sep="\t")
+                    if len(metrics['Picard:CollectQualityYieldMetrics'])>0:
+                        for ind,item in enumerate(['total_reads','read_length','pf_reads']):
+                            title="%s %s %s" % (project,experiment,item)
+                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                metrics['Picard:CollectQualityYieldMetrics'],
+                                1000,
+                                600,
+                                ["BWA-MEM"],
+                                [item],
+                                title
+                            )
+
+                    if len(metrics['Sanger:verifyBamHomChk'])>0:
+                        for ind,item in enumerate(['avg_depth','contamination','reads_used','snps_used']):
+                            title="%s %s %s" % (project,experiment,item)
+                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                metrics['Sanger:verifyBamHomChk'],
+                                1000,
+                                600,
+                                ["BWA-MEM"],
+                                [item],
+                                title
+                            )
+
+                    if len(metrics['Sanger:compareBamGenotypes'])>0:
+                        for ind,item in enumerate(['total_loci_genotype','frac_match_gender','frac_informative_genotype','frac_matched_genotype']):
+                            title="%s %s %s" % (project,experiment,item)
+                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                metrics['Sanger:compareBamGenotypes'],
+                                1000,
+                                600,
+                                ["BWA-MEM"],
+                                [item],
+                                title
+                            )
+                    for key,name in zip(
+                        [
+                            'biobambam2:bammarkduplicates2',
+                            'GATK:CollectOxoGMetrics',
+                            'Samtools:stats',
+                            'Picard:CollectQualityYieldMetrics',
+                            'Sanger:verifyBamHomChk',
+                            'Sanger:compareBamGenotypes'
+                        ],
+                        ["markDupMetrics","oxoMetrics","samtoolsMetrics","readGroupMetrics","verifyBamMetrics","bamGenotypesMetrics"]
+                    ):
+                        if len(metrics[key])>0:
+                            metrics[key].to_csv("%s/%s_%s_%s_%s.tsv" % (tsv_dir,state,project,experiment,name),sep="\t")
+
                     save_pkl_plots(write_dir,plots,cli_input.plot)   
 
 def save_pkl_plots(out_dir,gen_plots,plot):
@@ -343,11 +361,25 @@ def aggregate_gatk_quality_yield_metrics(response,analysis_exclude_list,debug):
                     metrics.loc[uniqueId,"readGroupId"]=file['info']['metrics']['read_group_id']
                     metrics.loc[uniqueId,"analysisId"]=analysis['analysisId']
                     metrics.loc[uniqueId,"objectId"]=file['objectId']
-                    metrics.loc[uniqueId,'total_reads']=file['info']['metrics']['total_reads']
-                    metrics.loc[uniqueId,'read_length']=file['info']['metrics']['read_length']
-                    metrics.loc[uniqueId,'pf_reads']=file['info']['metrics']['pf_reads']
+
+                    for query in [
+                        "total_reads",
+                        "read_length",
+                        'pf_reads'
+                    ]:
+                        if query in file['info']['metrics']:
+                            metrics.loc[uniqueId,query]=file['info']['metrics'][query]
+                        else:
+                            print("Analysis %s is missing field %s" % (analysis['analysisId'],query))
+                            metrics.loc[uniqueId,query]=None
             else:
                 continue
+
+    if debug:
+        print(metrics)
+
+    if len(metrics)==0:
+        print("No Data Found!")
 
     return(metrics)
 
@@ -385,13 +417,24 @@ def aggregate_samtools_stats_metrics(response,analysis_exclude_list,debug):
                         "total_bases",
                         "total_reads",
                     ]:
-                        metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
+                        if query in file['info']['metrics']:
+                            metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
+                        else:
+                            print("Analysis %s is missing field %s" % (analysis['analysisId'],query))
+                            metrics.loc[analysis['analysisId'],query]=None
             else:
                 continue
+
+    if debug:
+        print(metrics)
+        
+    if len(metrics)==0:
+        print("No Data Found!")
 
     return(metrics)
 
 def aggregate_sanger_compareBamGenotypes_metrics(response,analysis_exclude_list,debug):
+    print("Aggregating metrics from : %s" % ('Sanger:compareBamGenotypes'))
     metrics=pd.DataFrame()
     debug=False
     analysis_exclude_list=None
@@ -414,19 +457,51 @@ def aggregate_sanger_compareBamGenotypes_metrics(response,analysis_exclude_list,
                                 metrics.loc[analysis['analysisId'],"PIPELINE"]="BWA-MEM"
 
                             metrics.loc[analysis['analysisId'],"sampleId"]=analysis['samples'][0]['sampleId']
-                            metrics.loc[analysis['analysisId'],"compared_against"]=file['info']['metrics']['compared_against']
-                            metrics.loc[analysis['analysisId'],"compared_against"]=file['info']['metrics']['total_loci_gender']
-                            metrics.loc[analysis['analysisId'],"total_loci_genotype"]=file['info']['metrics']['total_loci_genotype']
-                            metrics.loc[analysis['analysisId'],'frac_match_gender']=file['info']['metrics']['tumours'][0]['gender']['frac_match_gender']
-                            metrics.loc[analysis['analysisId'],'gender']=file['info']['metrics']['tumours'][0]['gender']['gender']
-                            metrics.loc[analysis['analysisId'],'frac_informative_genotype']=file['info']['metrics']['tumours'][0]['genotype']['frac_informative_genotype']
-                            metrics.loc[analysis['analysisId'],'frac_matched_genotype']=file['info']['metrics']['tumours'][0]['genotype']['frac_matched_genotype']
+
+                            for query in [
+                                'frac_match_gender',
+                                'gender'
+                            ]:
+                                if query in file['info']['metrics']['tumours'][0]['gender']:
+                                    metrics.loc[analysis['analysisId'],query]=file['info']['metrics']['tumours'][0]['gender'][query]
+                                else:
+                                    print("Analysis %s is missing field %s" % (analysis['analysisId'],query))
+                                    metrics.loc[analysis['analysisId'],query]=None
+
+                            for query in [
+                                'compared_against',
+                                'total_loci_gender',
+                                'total_loci_genotype'
+                            ]:
+                                if query in file['info']['metrics']:
+                                    metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
+                                else:
+                                    print("Analysis %s is missing field %s" % (analysis['analysisId'],query))
+                                    metrics.loc[analysis['analysisId'],query]=None
+
+                            for query in [
+                                'frac_informative_genotype',
+                                'frac_matched_genotype'
+
+                            ]:
+                                if query in file['info']['metrics']['tumours'][0]['genotype']:
+                                    metrics.loc[analysis['analysisId'],query]=file['info']['metrics']['tumours'][0]['genotype'][query]
+                                else:
+                                    print("Analysis %s is missing field %s" % (analysis['analysisId'],query))
+                                    metrics.loc[analysis['analysisId'],query]=None
             else:
                 continue
+
+    if debug:
+        print(metrics)
+        
+    if len(metrics)==0:
+        print("No Data Found!")
 
     return(metrics)
 
 def aggregate_sanger_verifyBamHomChk_metrics(response,analysis_exclude_list,debug):
+    print("Aggregating metrics from : %s" % ('Sanger:verifyBamHomChk'))
     metrics=pd.DataFrame()
     debug=False
     analysis_exclude_list=None
@@ -455,6 +530,11 @@ def aggregate_sanger_verifyBamHomChk_metrics(response,analysis_exclude_list,debu
                                     metrics.loc[analysis['analysisId'],key]=file['info']['metrics'][key]
             else:
                 continue
+    if debug:
+        print(metrics)
+
+    if len(metrics)==0:
+        print("No Data Found!")
 
     return(metrics)
 
@@ -481,9 +561,20 @@ def aggregate_gatk_oxo_metrics(response,analysis_exclude_list,debug):
                     for query in [
                                 'oxoQ_score'
                     ]:
-                        metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
+                        if query in file['info']['metrics']:
+                            metrics.loc[analysis['analysisId'],query]=file['info']['metrics'][query]
+                        else:
+                            print("Analysis %s is missing field %s" % (analysis['analysisId'],query))
+                            metrics.loc[analysis['analysisId'],query]=None
+
             else:
                 continue
+
+    if debug:
+        print(metrics)
+
+    if len(metrics)==0:
+        print("No Data Found!")
 
     return(metrics)
 
@@ -519,12 +610,21 @@ def aggregate_picard_mark_duplicates_metrics(response,analysis_exclude_list,debu
             else:
                 continue
 
+
     metrics['TOTAL_READS']=(metrics['READ_PAIRS_EXAMINED']*2)+metrics['UNPAIRED_READS_EXAMINED']
     metrics['DUPLICATION_PCT']=((metrics['READ_PAIR_DUPLICATES']*2)+metrics['UNPAIRED_READ_DUPLICATES'])/metrics['TOTAL_READS']*100
     metrics['MAPPING_PCT']=(metrics['TOTAL_READS']-metrics['UNMAPPED_READS'])/metrics['TOTAL_READS']*100
+    
+
+    if debug:
+        print(metrics)
+        
+    if len(metrics)==0:
+        print("No Data Found!")
+
     return(metrics)
     
-def aggreate_picard_collect_rnaseq_metrics(response,metadata_df,analysis_exclude_list,debug):
+def aggreate_picard_collect_rnaseq_metrics(response,analysis_exclude_list,debug):
     print("Aggregating metrics from : %s " % ('Picard:CollectRnaSeqMetrics'))
     metrics=pd.DataFrame()
     for count,analysis in enumerate(response.json()):
@@ -545,6 +645,13 @@ def aggreate_picard_collect_rnaseq_metrics(response,metadata_df,analysis_exclude
                     metrics.loc[analysis['analysisId'],"sampleId"]=analysis['samples'][0]['sampleId']
             else:
                 continue
+
+    if debug:
+        print(metrics)
+        
+    if len(metrics)==0:
+        print("No Data Found!")
+
     return(metrics)
             
             
