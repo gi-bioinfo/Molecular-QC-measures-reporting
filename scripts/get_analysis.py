@@ -31,6 +31,8 @@ from plotly.subplots import make_subplots
 import plotly.graph_objs as go
 import pickle
 import sys
+import warnings
+warnings.filterwarnings('ignore')
 
 def main():
     """
@@ -44,6 +46,7 @@ def main():
     parser.add_argument('-e', '--experiment', dest="experiment", help="experiment type", required=True,nargs="+",type=str,choices=['RNA-Seq', 'WGS', 'WXS'])
     parser.add_argument('-z', '--plot', dest="plot", help="make pretty plots", default=True,type=bool)
     parser.add_argument('-d', '--debug', dest="debug", help="debug", default=False,type=bool)
+    parser.add_argument('-y', '--plot_level', dest="plot_level",default=['sample','donor'],help="sample or donor level plots",nargs="+",type=str,choices=['sample','donor'])
     parser.add_argument('-s', '--state', dest="state", help="analysis state to query : PUBLISHED,SUPPRESSED,UNPUBLISHED",
                         nargs="+",
                         default=['PUBLISHED'],
@@ -60,11 +63,11 @@ def main():
             for experiment in cli_input.experiment:
                 write_dir="%s/%s_%s_%s" % (cli_input.out_dir,state,project,experiment)
                 if not os.path.exists(write_dir):
-                    os.mkdir(write_dir)
+                    os.makedirs(write_dir)
 
                 tsv_dir="%s/%s" % (write_dir,"tsv")
                 if not os.path.exists(tsv_dir):
-                    os.mkdir(tsv_dir)
+                    os.makedirs(tsv_dir)
 
                 metadata[project][experiment]={}
                 
@@ -89,49 +92,53 @@ def main():
                         cli_input.excluded_analyses,
                         cli_input.debug
                     )                    
-                
-                    if len(metrics['biobambam2:bammarkduplicates2'])>0:
-                        for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
-                            title="%s %s %s" % (project,experiment,item)
-                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                                metrics['biobambam2:bammarkduplicates2'],
-                                1000,
-                                600,
-                                ["STAR","HISAT2"],
-                                [item],
-                                title
-                            )
-                    if len(metrics['Picard:CollectRnaSeqMetrics'])>0:
-                        for ind,item in enumerate([
-                            "median_3prime_bias",
-                            "median_5prime_bias",
-                            "median_5prime_to_3prime_bias",
-                            "median_cv_coverage",
-                            "pct_coding_bases",
-                            "pct_correct_strand_reads",
-                            "pct_intergenic_bases",
-                            "pct_intronic_bases",
-                            "pct_mrna_bases",
-                            "pct_r1_transcript_strand_reads",
-                            "pct_r2_transcript_strand_reads",
-                            "pct_ribosomal_bases",
-                            "pct_usable_bases",
-                            "pct_utr_bases"]):
-                            title="%s %s %s" % (project,experiment,item)
-                            plots["fig.%s.%s.%s" % (2,ind+1,title.replace(" ","_"))]=generate_plot(
-                                metrics['Picard:CollectRnaSeqMetrics'],
-                                1000,
-                                600,
-                                ["STAR","HISAT2"],
-                                [item],
-                                title
-                            )
+                    for plot_level in cli_input.plot_level:
+                        if len(metrics['biobambam2:bammarkduplicates2'])>0:
+                            for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
+                                title="%s %s %s %s" % (project,experiment,plot_level+"Lvl",item)
+                                plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                    metadata[project][experiment][state],
+                                    metrics['biobambam2:bammarkduplicates2'],
+                                    1000,
+                                    600,
+                                    ["STAR","HISAT2"],
+                                    [item],
+                                    title,
+                                    plot_level
+                                )
+                        if len(metrics['Picard:CollectRnaSeqMetrics'])>0:
+                            for ind,item in enumerate([
+                                "median_3prime_bias",
+                                "median_5prime_bias",
+                                "median_5prime_to_3prime_bias",
+                                "median_cv_coverage",
+                                "pct_coding_bases",
+                                "pct_correct_strand_reads",
+                                "pct_intergenic_bases",
+                                "pct_intronic_bases",
+                                "pct_mrna_bases",
+                                "pct_r1_transcript_strand_reads",
+                                "pct_r2_transcript_strand_reads",
+                                "pct_ribosomal_bases",
+                                "pct_usable_bases",
+                                "pct_utr_bases"]):
+                                title="%s %s %s %s" % (project,experiment,plot_level+"Lvl",item)
+                                plots["fig.%s.%s.%s" % (2,ind+1,title.replace(" ","_"))]=generate_plot(
+                                    metadata[project][experiment][state],
+                                    metrics['Picard:CollectRnaSeqMetrics'],
+                                    1000,
+                                    600,
+                                    ["STAR","HISAT2"],
+                                    [item],
+                                    title,
+                                    plot_level
+                                )
                     for key,name in zip(
                         ['Picard:CollectRnaSeqMetrics','biobambam2:bammarkduplicates2'],
                         ["rnaMetrics","libraryMetrics"]
                     ):
                         if len(metrics[key])>0:
-                            metrics[key].to_csv("%s/%s_%s_%s_%s.tsv" % (tsv_dir,state,project,experiment,name),sep="\t")
+                            metrics[key].to_csv("%s/%s_%s_%s_%s.tsv" % (tsv_dir,state,project,experiment,name),sep="\t",index=True)
 
                     save_pkl_plots(write_dir,plots,cli_input.plot)
                 if experiment=='WGS' or experiment=='WXS':
@@ -166,87 +173,100 @@ def main():
                         cli_input.debug
                     )
 
-                    if len(metrics['biobambam2:bammarkduplicates2'])>0:
-                        for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
-                            title="%s %s %s" % (project,experiment,item)
-                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                                metrics['biobambam2:bammarkduplicates2'],
-                                1000,
-                                600,
-                                ["BWA-MEM"],
-                                [item],
-                                title
-                            )
-                    if len(metrics['GATK:CollectOxoGMetrics'])>0:
-                        for ind,item in enumerate(['oxoQ_score']):
-                            title="%s %s %s" % (project,experiment,item)
-                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                                metrics['GATK:CollectOxoGMetrics'],
-                                1000,
-                                600,
-                                ["BWA-MEM"],
-                                [item],
-                                title
-                            )
+                    for plot_level in cli_input.plot_level:
+                        if len(metrics['biobambam2:bammarkduplicates2'])>0:
+                            for ind,item in enumerate(['TOTAL_READS','DUPLICATION_PCT','MAPPING_PCT']):
+                                title="%s %s %s %s" % (project,experiment,plot_level+"Lvl",item)
+                                plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                    metadata[project][experiment][state],
+                                    metrics['biobambam2:bammarkduplicates2'],
+                                    1000,
+                                    600,
+                                    ["BWA-MEM"],
+                                    [item],
+                                    title,
+                                    plot_level
+                                )
+                        if len(metrics['GATK:CollectOxoGMetrics'])>0:
+                            for ind,item in enumerate(['oxoQ_score']):
+                                title="%s %s %s %s" % (project,experiment,plot_level+"Lvl",item)
+                                plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                    metadata[project][experiment][state],
+                                    metrics['GATK:CollectOxoGMetrics'],
+                                    1000,
+                                    600,
+                                    ["BWA-MEM"],
+                                    [item],
+                                    title,
+                                    plot_level
+                                )
 
-                    if len(metrics['Samtools:stats'])>0:
-                        for ind,item in enumerate(["average_insert_size",
-                            "average_length",
-                            "duplicated_bases",
-                            "error_rate",
-                            "mapped_bases_cigar",
-                            "mapped_reads",
-                            "mismatch_bases",
-                            "paired_reads",
-                            "pairs_on_different_chromosomes",
-                            "properly_paired_reads",
-                            "total_bases",
-                            "total_reads"]):
-                            title="%s %s %s" % (project,experiment,item)
-                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                                metrics['Samtools:stats'],
-                                1000,
-                                600,
-                                ["BWA-MEM"],
-                                [item],
-                                title
-                            )
+                        if len(metrics['Samtools:stats'])>0:
+                            for ind,item in enumerate(["average_insert_size",
+                                "average_length",
+                                "duplicated_bases",
+                                "error_rate",
+                                "mapped_bases_cigar",
+                                "mapped_reads",
+                                "mismatch_bases",
+                                "paired_reads",
+                                "pairs_on_different_chromosomes",
+                                "properly_paired_reads",
+                                "total_bases",
+                                "total_reads"]):
+                                title="%s %s %s %s" % (project,experiment,plot_level+"Lvl",item)
+                                plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                    metadata[project][experiment][state],
+                                    metrics['Samtools:stats'],
+                                    1000,
+                                    600,
+                                    ["BWA-MEM"],
+                                    [item],
+                                    title,
+                                    plot_level
+                                )
 
-                    if len(metrics['Picard:CollectQualityYieldMetrics'])>0:
-                        for ind,item in enumerate(['total_reads','read_length','pf_reads']):
-                            title="%s %s %s" % (project,experiment,item)
-                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                                metrics['Picard:CollectQualityYieldMetrics'],
-                                1000,
-                                600,
-                                ["BWA-MEM"],
-                                [item],
-                                title
-                            )
+                        if len(metrics['Picard:CollectQualityYieldMetrics'])>0 and plot_level=='sample':
+                            for ind,item in enumerate(['total_reads','read_length','pf_reads']):
+                                title="%s %s %s %s" % (project,experiment,plot_level+"Lvl",item)
+                                plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                    metadata[project][experiment][state],
+                                    metrics['Picard:CollectQualityYieldMetrics'],
+                                    1000,
+                                    600,
+                                    ["BWA-MEM"],
+                                    [item],
+                                    title,
+                                    plot_level
+                                )
 
-                    if len(metrics['Sanger:verifyBamHomChk'])>0:
-                        for ind,item in enumerate(['avg_depth','contamination','reads_used','snps_used']):
-                            title="%s %s %s" % (project,experiment,item)
-                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                                metrics['Sanger:verifyBamHomChk'],
-                                1000,
-                                600,
-                                ["BWA-MEM"],
-                                [item],
-                                title
-                            )
+                        if len(metrics['Sanger:verifyBamHomChk'])>0 and plot_level=='sample':
+                            for ind,item in enumerate(['avg_depth','contamination','reads_used','snps_used']):
+                                title="%s %s %s %s" % (project,experiment,plot_level+"Lvl",item)
+                                plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                    metadata[project][experiment][state],
+                                    metrics['Sanger:verifyBamHomChk'],
+                                    1000,
+                                    600,
+                                    ["BWA-MEM"],
+                                    [item],
+                                    title,
+                                    plot_level
+                                )
 
-                    if len(metrics['Sanger:compareBamGenotypes'])>0:
-                        for ind,item in enumerate(['total_loci_genotype','frac_match_gender','frac_informative_genotype','frac_matched_genotype']):
-                            title="%s %s %s" % (project,experiment,item)
-                            plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
-                                metrics['Sanger:compareBamGenotypes'],
-                                1000,
-                                600,
-                                ["BWA-MEM"],
-                                [item],
-                                title
-                            )
+                        if len(metrics['Sanger:compareBamGenotypes'])>0 and plot_level=='sample':
+                            for ind,item in enumerate(['total_loci_genotype','frac_match_gender','frac_informative_genotype','frac_matched_genotype']):
+                                title="%s %s %s %s" % (project,experiment,plot_level+"Lvl",item)
+                                plots["fig.%s.%s.%s" % (1,ind+1,title.replace(" ","_"))]=generate_plot(
+                                    metadata[project][experiment][state],
+                                    metrics['Sanger:compareBamGenotypes'],
+                                    1000,
+                                    600,
+                                    ["BWA-MEM"],
+                                    [item],
+                                    title,
+                                    plot_level
+                                )
                     for key,name in zip(
                         [
                             'biobambam2:bammarkduplicates2',
@@ -259,7 +279,7 @@ def main():
                         ["markDupMetrics","oxoMetrics","samtoolsMetrics","readGroupMetrics","verifyBamMetrics","bamGenotypesMetrics"]
                     ):
                         if len(metrics[key])>0:
-                            metrics[key].to_csv("%s/%s_%s_%s_%s.tsv" % (tsv_dir,state,project,experiment,name),sep="\t")
+                            metrics[key].to_csv("%s/%s_%s_%s_%s.tsv" % (tsv_dir,state,project,experiment,name),sep="\t",index=True)
 
                     save_pkl_plots(write_dir,plots,cli_input.plot)   
 
@@ -269,9 +289,9 @@ def save_pkl_plots(out_dir,gen_plots,plot):
     pkl_dir="%s/%s" % (out_dir,"pkl")
 
     if not os.path.exists(svg_dir):
-        os.mkdir(svg_dir)
+        os.makedirs(svg_dir)
     if not os.path.exists(pkl_dir):
-        os.mkdir(pkl_dir)
+        os.makedirs(pkl_dir)
     for gen_plot in gen_plots.keys():
         file = open("%s/%s.pkl" % (pkl_dir,gen_plot),"wb")
         pickle.dump(gen_plots[gen_plot],file)
@@ -284,7 +304,13 @@ def save_pkl_plots(out_dir,gen_plots,plot):
             gen_plots[gen_plot].write_image("%s/%s.svg" % (svg_dir,gen_plot))
         print("Saving plots SVGs...Complete")
 
-def generate_plot(metrics,x_dim,y_dim,cols,rows,title):
+def generate_plot(metadata,metrics,x_dim,y_dim,cols,rows,title,plot_level):
+    if plot_level=='sample':
+        return(generate_sample_plot(metrics,x_dim,y_dim,cols,rows,title))
+    else:
+        return(generate_donor_plot(metadata,metrics,x_dim,y_dim,cols,rows,title))
+
+def generate_sample_plot(metrics,x_dim,y_dim,cols,rows,title):
     print("Generating plot for %s" % (title))
     fig=plotly.subplots.make_subplots(
         cols=len(cols),
@@ -324,12 +350,101 @@ def generate_plot(metrics,x_dim,y_dim,cols,rows,title):
         width=x_dim,
         height=y_dim,
         title=title,
-        xaxis=dict(title="analysisId"),
+        xaxis=dict(title="sampleId"),
         yaxis=dict(title=""),
         showlegend=True,
         titlefont=dict(size=20)
     )
     return(fig)
+
+def generate_donor_plot(metadata,metrics,x_dim,y_dim,cols,rows,title):
+    print("Generating plot for %s" % (title))
+    fig=plotly.subplots.make_subplots(
+        cols=len(cols),
+        rows=len(rows),
+        subplot_titles=cols
+    )
+
+    for row_ind,row in enumerate(rows):
+        for col_ind,col in enumerate(cols):
+            samples=metrics.query("PIPELINE==@col")['sampleId'].values.tolist()
+            ###Return tumour samples
+            subset_metadata=metadata.query("sampleId==@samples and tumourNormalDesignation=='Tumour'").loc[:,["sampleId","matchedNormalSampleId","donorId"]].drop_duplicates().set_index("sampleId")
+            ###Reorder tumour samples according to metric value
+            subset_metadata=subset_metadata.loc[metrics.set_index("sampleId").loc[subset_metadata.index.values.tolist(),row].sort_values().index.values.tolist(),:]
+            ###Return metric value for tumour and normal samples
+            tumour_values=metrics.set_index("sampleId").loc[subset_metadata.index.values.tolist(),row].values.tolist()
+            normal_values=[metrics.set_index("sampleId").loc[ind,row] if ind in metrics.set_index("sampleId").index else None for ind in subset_metadata['matchedNormalSampleId'].values.tolist()]
+            
+            ###Plot donor vs metrics from normal
+            fig.append_trace(
+                go.Scatter(
+                    x=subset_metadata['donorId'].values.tolist(),
+                    y=normal_values,
+                    mode='markers+lines',
+                    name='Normal',
+                    line=dict(dash="dash",color="green"),
+                    showlegend=True),
+                row_ind+1,
+                col_ind+1
+            )
+            ###Plot donor vs metrics from tumour
+            fig.append_trace(
+                go.Scatter(
+                    x=subset_metadata['donorId'].values.tolist(),
+                    y=tumour_values,
+                    mode='markers+lines',
+                    name='Tumour',
+                    line=dict(dash="dash",color="red"),
+                    showlegend=True),
+                row_ind+1,
+                col_ind+1
+            )
+            for val in [25,50,75]:
+                ###Print percentiles for tumours
+                fig.append_trace(
+                    go.Scatter(
+                        x=[
+                            subset_metadata['donorId'].values.tolist()[0],
+                            subset_metadata['donorId'].values.tolist()[-1]
+                        ],
+                        y=[np.percentile([z for z in tumour_values if z!=None],val,axis=0)]*2,
+                        mode='lines',
+                        line=dict(dash="dash",color="black"),
+                        opacity=0.6,
+                        name="Tumour Percentiles : 25,50,75",
+                        showlegend=True if val==25 else False),
+                    row_ind+1,
+                    col_ind+1
+                )
+                ###Print percentiles for normals
+                fig.append_trace(
+                    go.Scatter(
+                        x=[
+                            subset_metadata['donorId'].values.tolist()[0],
+                            subset_metadata['donorId'].values.tolist()[-1]
+                        ],
+                        y=[np.percentile([z for z in normal_values if z!=None],val,axis=0)]*2,
+                        mode='lines',
+                        line=dict(dash="dot",color="black"),
+                        opacity=0.4,
+                        name="Normal Percentiles : 25,50,75",
+                        showlegend=True if val==25 else False),
+                    row_ind+1,
+                    col_ind+1
+                )
+
+    fig['layout'].update(
+        width=x_dim,
+        height=y_dim,
+        title=title,
+        xaxis=dict(title="donorId"),
+        yaxis=dict(title=""),
+        showlegend=True,
+        titlefont=dict(size=20)
+    )
+    return(fig)
+
 def aggregate_gatk_quality_yield_metrics(response,analysis_exclude_list,debug):
     print("Aggregating metrics from : %s" % ('Picard:CollectQualityYieldMetrics'))
     metrics=pd.DataFrame()
@@ -681,6 +796,9 @@ def generate_rdpc_metadata(response,experiment):
                 metadata.loc[count,'submitterSpecimenId']=analysis['samples'][0]['specimen']['submitterSpecimenId']
                 metadata.loc[count,'submitterDonorId']=analysis['samples'][0]['donor']['submitterDonorId']
 
+                metadata.loc[count,'tumourNormalDesignation']=analysis['samples'][0]['specimen']['tumourNormalDesignation']
+                metadata.loc[count,'matchedNormalSubmitterSampleId']=analysis['samples'][0]['matchedNormalSubmitterSampleId']
+
                 metadata.loc[count,'donorId']=analysis['samples'][0]['donor']['donorId']
                 metadata.loc[count,'specimenId']=analysis['samples'][0]['specimen']['specimenId']
                 metadata.loc[count,'sampleId']=analysis['samples'][0]['sampleId']
@@ -689,6 +807,19 @@ def generate_rdpc_metadata(response,experiment):
                 metadata.loc[count,'runId']=analysis['workflow']['run_id']
                 metadata.loc[count,'ind']=ind
                 count+=1
+
+    warnings=[]
+    normalSubmitterToArgo={z[0]:z[1] for z in metadata.loc[:,["submitterSampleId","sampleId"]].drop_duplicates().values.tolist()}
+    for ind in metadata.query("tumourNormalDesignation=='Tumour'").index.values.tolist():
+        submitterId=metadata.loc[ind,"matchedNormalSubmitterSampleId"]
+        if normalSubmitterToArgo.get(submitterId):
+            metadata.loc[ind,"matchedNormalSampleId"]=normalSubmitterToArgo.get(submitterId)
+        else:
+            warnings.append("No ID associated with %s based on SONG records" % submitterId)
+            
+    for warning in list(set(warnings)):
+        print(warning)
+
     print("Aggregating Files and IDs...Complete")        
     return(metadata)
 
